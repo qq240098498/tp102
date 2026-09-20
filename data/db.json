@@ -10,7 +10,8 @@
       "pattern": "console.log",
       "note": "上线前要换成统一日志",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1002",
@@ -22,7 +23,8 @@
       "pattern": "var ",
       "note": "老代码里还有不少",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1003",
@@ -34,7 +36,8 @@
       "pattern": "TODO",
       "note": "带人名与期限的可以留",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1004",
@@ -46,7 +49,8 @@
       "pattern": "eval(",
       "note": "",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1005",
@@ -58,7 +62,8 @@
       "pattern": "password =",
       "note": "口令一律走统一配置",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1006",
@@ -70,7 +75,8 @@
       "pattern": "catch (e) {}",
       "note": "",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1007",
@@ -82,7 +88,8 @@
       "pattern": "DEBUG = true",
       "note": "等联调结束再打开",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1008",
@@ -94,7 +101,8 @@
       "pattern": "postgres://",
       "note": "",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1009",
@@ -106,7 +114,8 @@
       "pattern": "process.env[",
       "note": "直接按名字取容易拼错",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1010",
@@ -118,7 +127,8 @@
       "pattern": "FIXME",
       "note": "",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1011",
@@ -130,7 +140,8 @@
       "pattern": "rm -rf",
       "note": "脚本里改用受控的清理命令",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     },
     {
       "id": "rule-1012",
@@ -142,7 +153,8 @@
       "pattern": "待补",
       "note": "",
       "createdAt": "2026-09-02T02:00:00.000Z",
-      "updatedAt": "2026-09-02T02:00:00.000Z"
+      "updatedAt": "2026-09-02T02:00:00.000Z",
+      "updatedBy": ""
     }
   ],
   "files": [
@@ -254,5 +266,22 @@
       "createdAt": "2026-09-02T03:00:00.000Z",
       "updatedAt": "2026-09-02T03:00:00.000Z"
     }
-  ]
+  ],
+  "locks": [
+    {
+      "ruleId": "rule-1003",
+      "operator": "12",
+      "since": "2026-09-20T11:51:57.376Z",
+      "snapshot": {
+        "code": "CODE-003",
+        "name": "待办事项需要收口",
+        "level": "提示",
+        "status": "启用",
+        "fileType": "全部",
+        "pattern": "TODO",
+        "note": "带人名与期限的可以留"
+      }
+    }
+  ],
+  "ruleHistory": []
 }

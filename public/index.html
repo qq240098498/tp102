@@ -48,6 +48,7 @@
               <th>适用文件类型</th>
               <th>匹配写法</th>
               <th>说明</th>
+              <th>占用</th>
               <th>更新时间</th>
               <th>操作</th>
             </tr>
@@ -59,6 +60,7 @@
 
       <form class="entry-form hidden" id="rule-form" autocomplete="off">
         <h3 id="rule-form-title">新建规则</h3>
+        <p class="lock-hint hidden" id="rule-lock-hint"></p>
         <div class="form-row">
           <label data-field="code">规则编码<input id="rule-code" placeholder="例如 CODE-013" maxlength="20"></label>
           <label data-field="name">规则名称<input id="rule-name" placeholder="例如 禁止把地址写死在代码里" maxlength="40"></label>
@@ -157,6 +159,49 @@
       <p class="empty-tip hidden" id="hit-empty">这一轮没有命中</p>
     </section>
   </main>
+
+  <!-- 占用提示：换个人打开同一条规则时给出，由操作者决定等待还是另存为新规则 -->
+  <div class="modal-mask hidden" id="lock-modal">
+    <div class="modal">
+      <h3>这条规则正被占用</h3>
+      <p id="lock-modal-text"></p>
+      <div class="form-actions">
+        <button type="button" id="lock-modal-clone">另存为新规则</button>
+        <button type="button" id="lock-modal-wait" class="ghost">等待，稍后再试</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 保存冲突：占用期间被别处改动过，列出差异，由操作者决定覆盖还是放弃 -->
+  <div class="modal-mask hidden" id="conflict-modal">
+    <div class="modal">
+      <h3>保存被拦下：占用期间这条规则被别处改动过</h3>
+      <p id="conflict-modal-text"></p>
+      <div class="table-wrap">
+        <table class="grid diff-table">
+          <thead>
+            <tr><th>项目</th><th>打开时</th><th>现在</th></tr>
+          </thead>
+          <tbody id="conflict-diff-body"></tbody>
+        </table>
+      </div>
+      <div class="form-actions">
+        <button type="button" id="conflict-overwrite" class="danger-solid">覆盖保存</button>
+        <button type="button" id="conflict-discard" class="ghost">放弃本次改动</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改记录：一条规则的新建、修改与覆盖痕迹 -->
+  <div class="modal-mask hidden" id="history-modal">
+    <div class="modal">
+      <h3 id="history-modal-title">修改记录</h3>
+      <div class="history-list" id="history-list"></div>
+      <div class="form-actions">
+        <button type="button" id="history-close" class="ghost">关闭</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

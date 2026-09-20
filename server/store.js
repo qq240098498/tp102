@@ -14,6 +14,10 @@ const MAX_PATTERN_LENGTH = 60;
 const MAX_NOTE_LENGTH = 200;
 const MAX_PATH_LENGTH = 120;
 const MAX_CONTENT_LENGTH = 4000;
+const MAX_HISTORY_ENTRIES = 500;
+
+// 参与占用比对与痕迹记录的规则字段
+const RULE_FIELDS = ['code', 'name', 'level', 'status', 'fileType', 'pattern', 'note'];
 
 // 检查规则的初始数据。十二条规则里有两条是停用的，
 // 有一条启用的规则在现有文件里一条命中都没有，用来观察从未命中的规则
@@ -313,6 +317,7 @@ function normalizeRule(item, fallbackIndex) {
     note: typeof source.note === 'string' ? source.note : '',
     createdAt,
     updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+    updatedBy: typeof source.updatedBy === 'string' ? source.updatedBy : '',
   };
 }
 
@@ -332,6 +337,68 @@ function normalizeFile(item, fallbackIndex) {
     note: typeof source.note === 'string' ? source.note : '',
     createdAt,
     updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+  };
+}
+
+// 字段改动记录整理成 { 字段: { from, to } } 的固定结构，不认识的字段丢掉
+function normalizeChanges(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const changes = {};
+  RULE_FIELDS.forEach((field) => {
+    const entry = source[field];
+    if (!entry || typeof entry !== 'object') return;
+    changes[field] = {
+      from: typeof entry.from === 'string' ? entry.from : '',
+      to: typeof entry.to === 'string' ? entry.to : '',
+    };
+  });
+  return changes;
+}
+
+// 占用记录：谁从什么时候开始占着哪条规则，snapshot 是占用开始时规则的内容
+function normalizeLock(item) {
+  const source = item && typeof item === 'object' ? item : {};
+  const ruleId = typeof source.ruleId === 'string' ? source.ruleId : '';
+  const operator = typeof source.operator === 'string' ? source.operator : '';
+  const since = typeof source.since === 'string' && source.since ? source.since : '';
+  if (!ruleId || !operator || !since) return null;
+  const snapshotSource = source.snapshot && typeof source.snapshot === 'object' ? source.snapshot : {};
+  const snapshot = {};
+  RULE_FIELDS.forEach((field) => {
+    snapshot[field] = typeof snapshotSource[field] === 'string' ? snapshotSource[field] : '';
+  });
+  return { ruleId, operator, since, snapshot };
+}
+
+// 覆盖保存时被盖掉的那次改动：什么时候、谁改的、改了哪几项
+function normalizeOverwritten(value) {
+  if (!value || typeof value !== 'object') return null;
+  const at = typeof value.at === 'string' && value.at ? value.at : '';
+  if (!at) return null;
+  return {
+    at,
+    operator: typeof value.operator === 'string' ? value.operator : '',
+    changes: normalizeChanges(value.changes),
+  };
+}
+
+// 修改痕迹：谁在哪天对哪条规则做了什么；规则删掉之后痕迹仍然保留
+function normalizeHistoryEntry(item, fallbackIndex) {
+  const source = item && typeof item === 'object' ? item : {};
+  const ruleId = typeof source.ruleId === 'string' ? source.ruleId : '';
+  const at = typeof source.at === 'string' && source.at ? source.at : '';
+  if (!ruleId || !at) return null;
+  const kind = ['create', 'update', 'overwrite'].includes(source.kind) ? source.kind : 'update';
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : `history-restored-${fallbackIndex + 1}`,
+    ruleId,
+    code: typeof source.code === 'string' ? source.code : '',
+    name: typeof source.name === 'string' ? source.name : '',
+    at,
+    operator: typeof source.operator === 'string' ? source.operator : '',
+    kind,
+    changes: normalizeChanges(source.changes),
+    overwritten: normalizeOverwritten(source.overwritten),
   };
 }
 
@@ -368,7 +435,26 @@ function normalize(raw) {
     files.push(file);
   });
 
-  return { rules, files };
+  const ruleIds = new Set(rules.map((item) => item.id));
+  const rawLocks = Array.isArray(source.locks) ? source.locks : [];
+  const locks = [];
+  const lockedRuleIds = new Set();
+  rawLocks.forEach((item) => {
+    const lock = normalizeLock(item);
+    // 规则已经不在的占用直接清掉，一条规则同时只留一条占用
+    if (!lock || !ruleIds.has(lock.ruleId) || lockedRuleIds.has(lock.ruleId)) return;
+    lockedRuleIds.add(lock.ruleId);
+    locks.push(lock);
+  });
+
+  const rawHistory = Array.isArray(source.ruleHistory) ? source.ruleHistory : [];
+  const ruleHistory = [];
+  rawHistory.forEach((item, index) => {
+    const entry = normalizeHistoryEntry(item, index);
+    if (entry) ruleHistory.push(entry);
+  });
+
+  return { rules, files, locks, ruleHistory: ruleHistory.slice(-MAX_HISTORY_ENTRIES) };
 }
 
 // 读取数据文件：文件缺失或内容损坏时回落到初始数据并立刻补写
@@ -377,7 +463,7 @@ function load() {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
     return normalize(JSON.parse(raw));
   } catch (err) {
-    const data = { rules: seedRules(), files: seedFiles() };
+    const data = normalize({});
     save(data);
     return data;
   }
@@ -408,5 +494,7 @@ module.exports = {
   MAX_NOTE_LENGTH,
   MAX_PATH_LENGTH,
   MAX_CONTENT_LENGTH,
+  MAX_HISTORY_ENTRIES,
+  RULE_FIELDS,
   DATA_FILE,
 };

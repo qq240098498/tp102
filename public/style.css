@@ -383,3 +383,92 @@ label.full input {
   display: flex;
   gap: 10px;
 }
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  width: min(560px, calc(100vw - 48px));
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.25);
+}
+
+.modal h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.modal p {
+  margin: 0 0 12px;
+}
+
+.diff-table {
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.diff-table td {
+  white-space: normal;
+  word-break: break-all;
+}
+
+.tag-lock {
+  background: var(--warn-bg);
+  color: #8a5a00;
+}
+
+button.danger-solid {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.lock-hint {
+  margin: 0;
+  color: #8a5a00;
+  font-size: 12.5px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.history-item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+
+.history-item.history-overwrite {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+
+.history-head {
+  font-weight: 600;
+}
+
+.history-changes {
+  margin-top: 2px;
+  color: var(--ink-soft);
+}
+
+.history-overwritten {
+  margin-top: 4px;
+  color: #8a5a00;
+}

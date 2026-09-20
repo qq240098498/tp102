@@ -9,6 +9,10 @@ const state = {
   ruleLevels: [],
   ruleStatuses: [],
   ruleFileTypes: [],
+  locks: [],
+  ruleLock: null,
+  pendingPayload: null,
+  pendingCloneRuleId: '',
   editingRuleId: '',
   editingFileId: '',
   lastScan: null,
@@ -33,6 +37,7 @@ async function request(path, options) {
     const failure = new Error(error.message || `请求失败（状态码 ${res.status}）`);
     failure.code = error.code || '';
     failure.field = error.field || '';
+    failure.details = error.details || null;
     throw failure;
   }
   return payload;
@@ -125,6 +130,7 @@ async function loadRules() {
   state.levels = payload.levels || [];
   state.statuses = payload.statuses || [];
   state.fileTypes = payload.fileTypes || [];
+  state.locks = payload.locks || [];
   renderRuleFilters();
   renderRules();
   renderScanRuleOptions();
@@ -212,7 +218,12 @@ function renderScanFileOptions() {
 
 function renderRules() {
   const body = el('rule-body');
-  body.innerHTML = state.rules.map((item) => `<tr>
+  body.innerHTML = state.rules.map((item) => {
+    const lock = state.locks.find((entry) => entry.ruleId === item.id);
+    const lockCell = lock
+      ? `<span class="tag tag-lock">${escapeHtml(lock.operator)}（${escapeHtml(formatTime(lock.since))} 起）</span>`
+      : '';
+    return `<tr>
       <td class="mono">${escapeHtml(item.code)}</td>
       <td>${escapeHtml(item.name)}</td>
       <td><span class="tag ${levelClass(item.level)}">${escapeHtml(item.level)}</span></td>
@@ -220,12 +231,15 @@ function renderRules() {
       <td>${escapeHtml(item.fileType)}</td>
       <td class="mono">${escapeHtml(item.pattern)}</td>
       <td class="note-cell">${escapeHtml(item.note)}</td>
+      <td class="lock-cell">${lockCell}</td>
       <td class="mono">${escapeHtml(formatTime(item.updatedAt))}</td>
       <td class="actions">
         <button type="button" class="link" data-rule-edit="${escapeHtml(item.id)}">编辑</button>
+        <button type="button" class="link" data-rule-history="${escapeHtml(item.id)}">记录</button>
         <button type="button" class="link danger" data-rule-delete="${escapeHtml(item.id)}">删除</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   el('rule-empty').classList.toggle('hidden', state.rules.length > 0);
 }
 
@@ -260,10 +274,190 @@ function openRuleForm(rule) {
   el('rule-code').focus();
 }
 
+// 表单标题下写清这条规则当前被谁占着、从什么时候开始
+function showRuleLockHint(lock) {
+  const hint = el('rule-lock-hint');
+  if (!lock) {
+    hint.classList.add('hidden');
+    hint.textContent = '';
+    return;
+  }
+  hint.textContent = `当前由 ${lock.operator} 占用，从 ${formatTime(lock.since)} 开始`;
+  hint.classList.remove('hidden');
+}
+
+// 释放我手上这条规则的占用，然后刷新列表让占用标记跟着变
+function releaseRuleLock() {
+  const lock = state.ruleLock;
+  if (!lock) return;
+  state.ruleLock = null;
+  request(`/api/rules/${encodeURIComponent(lock.ruleId)}/unlock`, {
+    method: 'POST',
+    body: JSON.stringify({ operator: currentOperator() }),
+  }).then(() => loadRules()).catch(() => {});
+}
+
 function closeRuleForm() {
+  releaseRuleLock();
   state.editingRuleId = '';
   el('rule-form').classList.add('hidden');
   clearFieldMarks();
+  showRuleLockHint(null);
+}
+
+// 点编辑先占住这条规则：占上了才开表单；被别人占着就给出提示
+async function openRuleForEdit(ruleId) {
+  const operator = currentOperator();
+  if (!operator) {
+    notify('请先在右上角填上当前操作者的名字，再编辑规则', 'error');
+    markField('operator');
+    return;
+  }
+  if (state.ruleLock && state.ruleLock.ruleId !== ruleId) releaseRuleLock();
+  try {
+    const result = await request(`/api/rules/${encodeURIComponent(ruleId)}/lock`, {
+      method: 'POST',
+      body: JSON.stringify({ operator }),
+    });
+    state.ruleLock = result.lock;
+    openRuleForm(result.rule);
+    showRuleLockHint(result.lock);
+  } catch (err) {
+    if (err.code === 'RULE_LOCKED' && err.details) {
+      openLockModal(ruleId, err.details);
+      return;
+    }
+    notify(err.message, 'error');
+    markField(err.field);
+  }
+}
+
+// 占用提示：说明谁占着、从什么时候开始，由操作者决定等待还是另存为新规则
+function openLockModal(ruleId, details) {
+  state.pendingCloneRuleId = ruleId;
+  const who = details.lockedBy || '别人';
+  const since = details.lockedSince ? formatTime(details.lockedSince) : '';
+  el('lock-modal-text').textContent = `这条规则正被 ${who} 占用，从 ${since} 开始。可以等对方改完再打开，或者把这条规则的当前内容另存为一条新规则。`;
+  el('lock-modal').classList.remove('hidden');
+}
+
+function closeLockModal() {
+  state.pendingCloneRuleId = '';
+  el('lock-modal').classList.add('hidden');
+}
+
+// 另存为新规则：拉最新内容填进新建表单，编码留空让操作者填一个不重复的
+async function cloneLockedRule() {
+  const ruleId = state.pendingCloneRuleId;
+  closeLockModal();
+  if (!ruleId) return;
+  try {
+    const rule = await request(`/api/rules/${encodeURIComponent(ruleId)}`);
+    openRuleForm(null);
+    el('rule-form-title').textContent = `另存为新规则（源自 ${rule.code}）`;
+    el('rule-code').value = '';
+    el('rule-name').value = rule.name;
+    el('rule-level').value = rule.level;
+    el('rule-status').value = rule.status;
+    el('rule-file-type').value = rule.fileType;
+    el('rule-pattern').value = rule.pattern;
+    el('rule-note').value = rule.note;
+    el('rule-code').focus();
+    notify('已按当前内容填好表单，请给新规则填一个不重复的编码', 'ok');
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+// 保存冲突：占用期间被别处改动过，列出哪几项、打开时是什么、现在是什么
+function openConflictModal(details) {
+  const who = details.changedBy || '未留名的人';
+  const at = details.changedAt ? formatTime(details.changedAt) : '';
+  el('conflict-modal-text').textContent = `占用期间这条规则被 ${who} 在 ${at} 改过。对照下面的差异，决定覆盖还是放弃本次改动。`;
+  el('conflict-diff-body').innerHTML = (details.diff || []).map((row) => `<tr>
+      <td>${escapeHtml(row.label)}</td>
+      <td>${escapeHtml(row.was)}</td>
+      <td>${escapeHtml(row.now)}</td>
+    </tr>`).join('');
+  el('conflict-modal').classList.remove('hidden');
+}
+
+function closeConflictModal() {
+  state.pendingPayload = null;
+  el('conflict-modal').classList.add('hidden');
+}
+
+// 选择覆盖：带上 force 重新保存，服务端会把这次覆盖记进修改记录
+async function overwriteRule() {
+  const payload = state.pendingPayload;
+  const editing = state.editingRuleId;
+  closeConflictModal();
+  if (!payload || !editing) return;
+  try {
+    await request(`/api/rules/${encodeURIComponent(editing)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...payload, force: true }),
+    });
+    closeRuleForm();
+    notify('已覆盖保存，这次覆盖记进了修改记录', 'ok');
+    await loadRules();
+  } catch (err) {
+    notify(err.message, 'error');
+    markField(err.field);
+  }
+}
+
+// 选择放弃：本次改动不要了，释放占用并刷新到最新内容
+async function discardRuleChanges() {
+  closeConflictModal();
+  closeRuleForm();
+  notify('已放弃本次改动', 'ok');
+  await loadRules();
+}
+
+// 修改记录：新建、修改与覆盖痕迹，覆盖会标出盖掉的是哪一次改动
+async function openHistoryModal(ruleId) {
+  try {
+    const result = await request(`/api/rules/${encodeURIComponent(ruleId)}/history`);
+    const rule = state.rules.find((item) => item.id === ruleId);
+    el('history-modal-title').textContent = `修改记录：${rule ? `${rule.code} ${rule.name}` : ruleId}`;
+    renderHistory(result.history || [], result.fieldLabels || {});
+    el('history-modal').classList.remove('hidden');
+  } catch (err) {
+    notify(err.message, 'error');
+  }
+}
+
+function closeHistoryModal() {
+  el('history-modal').classList.add('hidden');
+}
+
+function formatChanges(changes, labels) {
+  return Object.keys(changes || {}).map((field) => {
+    const label = labels[field] || field;
+    const entry = changes[field];
+    return `${label}：${entry.from || '（空）'} → ${entry.to || '（空）'}`;
+  }).join('；');
+}
+
+function renderHistory(history, labels) {
+  const box = el('history-list');
+  if (!history.length) {
+    box.innerHTML = '<p class="empty-tip">还没有修改记录</p>';
+    return;
+  }
+  const kindText = { create: '新建', update: '修改', overwrite: '覆盖保存' };
+  box.innerHTML = history.map((entry) => {
+    const changesText = formatChanges(entry.changes, labels);
+    const overwritten = entry.overwritten
+      ? `<div class="history-overwritten">覆盖了 ${escapeHtml(entry.overwritten.operator || '未留名')} 在 ${escapeHtml(formatTime(entry.overwritten.at))} 的改动：${escapeHtml(formatChanges(entry.overwritten.changes, labels))}</div>`
+      : '';
+    return `<div class="history-item${entry.kind === 'overwrite' ? ' history-overwrite' : ''}">
+      <div class="history-head">${escapeHtml(formatTime(entry.at))}　${escapeHtml(entry.operator || '未留名')}　${kindText[entry.kind] || '修改'}</div>
+      ${changesText ? `<div class="history-changes">${escapeHtml(changesText)}</div>` : ''}
+      ${overwritten}
+    </div>`;
+  }).join('');
 }
 
 function openFileForm(file) {
@@ -306,6 +500,7 @@ async function submitRule(event) {
     fileType: el('rule-file-type').value,
     pattern: el('rule-pattern').value,
     note: el('rule-note').value,
+    operator: currentOperator(),
   };
   const editing = state.editingRuleId;
   try {
@@ -319,6 +514,12 @@ async function submitRule(event) {
     closeRuleForm();
     await loadRules();
   } catch (err) {
+    // 占用期间被别处改动过：把差异摆出来，由操作者决定覆盖还是放弃
+    if (editing && err.code === 'RULE_CONFLICT' && err.details) {
+      state.pendingPayload = payload;
+      openConflictModal(err.details);
+      return;
+    }
     notify(err.message, 'error');
     markField(err.field);
   }
@@ -414,8 +615,13 @@ document.addEventListener('click', async (event) => {
 
   if (node.dataset.ruleEdit) {
     clearNotice();
-    const found = state.rules.find((item) => item.id === node.dataset.ruleEdit);
-    if (found) openRuleForm(found);
+    await openRuleForEdit(node.dataset.ruleEdit);
+    return;
+  }
+
+  if (node.dataset.ruleHistory) {
+    clearNotice();
+    await openHistoryModal(node.dataset.ruleHistory);
     return;
   }
 
@@ -505,6 +711,11 @@ el('file-filter-reset').addEventListener('click', () => {
   loadFiles().catch((err) => notify(err.message, 'error'));
 });
 el('scan-run').addEventListener('click', runScan);
+el('lock-modal-clone').addEventListener('click', cloneLockedRule);
+el('lock-modal-wait').addEventListener('click', closeLockModal);
+el('conflict-overwrite').addEventListener('click', overwriteRule);
+el('conflict-discard').addEventListener('click', discardRuleChanges);
+el('history-close').addEventListener('click', closeHistoryModal);
 el('rule-filter-level').addEventListener('change', () => {
   loadRules().catch((err) => notify(err.message, 'error'));
 });
@@ -513,6 +724,14 @@ el('rule-filter-status').addEventListener('change', () => {
 });
 el('operator').addEventListener('change', () => {
   window.localStorage.setItem(OPERATOR_KEY, currentOperator());
+});
+
+// 关页面或刷新时把手上这条规则的占用放掉，免得一直占着别人改不了
+window.addEventListener('beforeunload', () => {
+  const lock = state.ruleLock;
+  if (!lock) return;
+  const payload = new Blob([JSON.stringify({ operator: currentOperator() })], { type: 'application/json' });
+  navigator.sendBeacon(`/api/rules/${encodeURIComponent(lock.ruleId)}/unlock`, payload);
 });
 
 // 页面打开时先把规则与文件都拉一遍，扫描的范围下拉依赖这两份清单

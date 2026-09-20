@@ -38,6 +38,33 @@ app.get('/api/rules/:id', (req, res) => {
   }
 });
 
+// 打开编辑表单时占住这条规则；同一个人重复打开不算冲突
+app.post('/api/rules/:id/lock', (req, res) => {
+  try {
+    res.json(api.lockRule(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 关掉编辑表单时释放占用
+app.post('/api/rules/:id/unlock', (req, res) => {
+  try {
+    res.json(api.unlockRule(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 某条规则的修改与覆盖痕迹
+app.get('/api/rules/:id/history', (req, res) => {
+  try {
+    res.json(api.getRuleHistory(req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 app.patch('/api/rules/:id', (req, res) => {
   try {
     res.json(api.updateRule(req.params.id, req.body));
@@ -115,9 +142,9 @@ app.use('/api', (_req, res) => {
 // 统一错误出口：业务异常按状态码与错误码返回，其余按服务异常处理
 function sendError(res, err) {
   if (err instanceof api.ApiError) {
-    return res.status(err.status).json({
-      error: { code: err.code, message: err.message, field: err.field },
-    });
+    const body = { error: { code: err.code, message: err.message, field: err.field } };
+    if (err.details) body.error.details = err.details;
+    return res.status(err.status).json(body);
   }
   console.error('[tp102] 处理请求时出现未预期的问题：', err);
   return res.status(500).json({
