@@ -49,6 +49,7 @@
               <th>匹配写法</th>
               <th>说明</th>
               <th>更新时间</th>
+              <th>占用</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -59,6 +60,7 @@
 
       <form class="entry-form hidden" id="rule-form" autocomplete="off">
         <h3 id="rule-form-title">新建规则</h3>
+        <div class="lock-banner hidden" id="rule-lock-banner"></div>
         <div class="form-row">
           <label data-field="code">规则编码<input id="rule-code" placeholder="例如 CODE-013" maxlength="20"></label>
           <label data-field="name">规则名称<input id="rule-name" placeholder="例如 禁止把地址写死在代码里" maxlength="40"></label>
@@ -157,6 +159,17 @@
       <p class="empty-tip hidden" id="hit-empty">这一轮没有命中</p>
     </section>
   </main>
+
+  <div class="modal-mask hidden" id="modal-mask">
+    <div class="modal" id="modal-box" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h3 id="modal-title"></h3>
+        <button type="button" class="link" id="modal-close">关闭</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions" id="modal-actions"></div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

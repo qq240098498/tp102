@@ -38,6 +38,54 @@ app.get('/api/rules/:id', (req, res) => {
   }
 });
 
+// 打开编辑表单时占住这一条；心跳续期；取消或离开时放开
+app.post('/api/rules/:id/edit-lock', (req, res) => {
+  try {
+    res.json(api.openRuleForEdit(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.post('/api/rules/:id/edit-lock/heartbeat', (req, res) => {
+  try {
+    res.json(api.touchRuleLock(req.params.id, req.body));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+app.delete('/api/rules/:id/edit-lock', (req, res) => {
+  try {
+    res.json(api.closeRuleLock(req.params.id, req.body || {}));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 页面关掉标签页时只能用 sendBeacon 报个 POST，单独留一个释放入口
+app.post('/api/rules/:id/edit-lock/release', (req, res) => {
+  try {
+    res.json(api.closeRuleLock(req.params.id, req.body || {}));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 一条规则的改动记录：覆盖留痕也在这里看得到
+app.get('/api/rules/:id/history', (req, res) => {
+  try {
+    res.json(api.getRuleHistory(req.params.id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// 当前所有占用情况，供页面标注哪些规则正被人占着
+app.get('/api/rule-locks', (_req, res) => {
+  res.json(api.listRuleLocks());
+});
+
 app.patch('/api/rules/:id', (req, res) => {
   try {
     res.json(api.updateRule(req.params.id, req.body));
@@ -48,7 +96,7 @@ app.patch('/api/rules/:id', (req, res) => {
 
 app.delete('/api/rules/:id', (req, res) => {
   try {
-    res.json(api.deleteRule(req.params.id));
+    res.json(api.deleteRule(req.params.id, req.body || {}));
   } catch (err) {
     sendError(res, err);
   }
@@ -116,7 +164,12 @@ app.use('/api', (_req, res) => {
 function sendError(res, err) {
   if (err instanceof api.ApiError) {
     return res.status(err.status).json({
-      error: { code: err.code, message: err.message, field: err.field },
+      error: {
+        code: err.code,
+        message: err.message,
+        field: err.field,
+        detail: err.detail === undefined ? null : err.detail,
+      },
     });
   }
   console.error('[tp102] 处理请求时出现未预期的问题：', err);

@@ -15,6 +15,11 @@ const MAX_NOTE_LENGTH = 200;
 const MAX_PATH_LENGTH = 120;
 const MAX_CONTENT_LENGTH = 4000;
 
+// 参与版本比对的规则字段，顺序就是保存冲突时逐项列给操作者看的顺序
+const RULE_FIELDS = ['code', 'name', 'level', 'status', 'fileType', 'pattern', 'note'];
+// 每条规则最多留多少条改动记录，再多把最早的收掉
+const HISTORY_LIMIT = 50;
+
 // 检查规则的初始数据。十二条规则里有两条是停用的，
 // 有一条启用的规则在现有文件里一条命中都没有，用来观察从未命中的规则
 function seedRules() {
@@ -295,6 +300,64 @@ function seedFiles() {
   ];
 }
 
+// 改动记录里的单条字段变化，认不出来的字段一律丢掉
+function sanitizeChange(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!RULE_FIELDS.includes(raw.field)) return null;
+  return {
+    field: raw.field,
+    from: typeof raw.from === 'string' ? raw.from : '',
+    to: typeof raw.to === 'string' ? raw.to : '',
+  };
+}
+
+// 覆盖留痕里被盖掉的那一次改动
+function sanitizeOverwritten(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!Number.isInteger(raw.version) || raw.version < 1) return null;
+  return {
+    version: raw.version,
+    at: typeof raw.at === 'string' ? raw.at : '',
+    operator: typeof raw.operator === 'string' ? raw.operator : '',
+  };
+}
+
+// 把单条改动记录整理成固定结构，数据文件被手工改坏时也不会把脏内容带进页面
+function sanitizeHistoryEntry(raw) {
+  if (!raw || typeof raw !== 'object' || !Number.isInteger(raw.version) || raw.version < 1) return null;
+  const type = ['create', 'edit', 'overwrite'].includes(raw.type) ? raw.type : 'edit';
+  return {
+    type,
+    version: raw.version,
+    at: typeof raw.at === 'string' && raw.at ? raw.at : '',
+    operator: typeof raw.operator === 'string' && raw.operator.trim() ? raw.operator.trim().slice(0, 40) : '未知',
+    changes: Array.isArray(raw.changes) ? raw.changes.map(sanitizeChange).filter(Boolean) : [],
+    overwrote: type === 'overwrite' && Array.isArray(raw.overwrote)
+      ? raw.overwrote.map(sanitizeOverwritten).filter(Boolean)
+      : [],
+    note: typeof raw.note === 'string' ? raw.note.slice(0, MAX_NOTE_LENGTH) : '',
+  };
+}
+
+// 规则第一次有版本概念时补一条建档基线，让每条历史都能从第一版看起
+function baselineHistory(createdAt) {
+  return { type: 'create', version: 1, at: createdAt, operator: '未知', changes: [], overwrote: [], note: '' };
+}
+
+// 整理一条规则的版本号与改动历史，每个版本只保留最后一条记录
+function normalizeHistory(source, version, createdAt) {
+  let history = Array.isArray(source.history)
+    ? source.history.map(sanitizeHistoryEntry).filter(Boolean)
+    : [];
+  if (!history.some((item) => item.version === 1)) history.unshift(baselineHistory(createdAt));
+  history.sort((a, b) => a.version - b.version);
+  const byVersion = new Map();
+  history.forEach((item) => byVersion.set(item.version, item));
+  history = Array.from(byVersion.values()).sort((a, b) => a.version - b.version);
+  const maxVersion = history.reduce((max, item) => Math.max(max, item.version), 1);
+  return { version: Math.max(version, maxVersion), history: history.slice(-HISTORY_LIMIT) };
+}
+
 // 把单条规则整理成固定结构，级别与状态不认识的一律回到默认值
 function normalizeRule(item, fallbackIndex) {
   const source = item && typeof item === 'object' ? item : {};
@@ -302,6 +365,8 @@ function normalizeRule(item, fallbackIndex) {
   const level = LEVELS.includes(source.level) ? source.level : LEVELS[0];
   const status = STATUSES.includes(source.status) ? source.status : STATUSES[0];
   const fileType = FILE_TYPES.includes(source.fileType) ? source.fileType : FILE_TYPES[0];
+  const declaredVersion = Number.isInteger(source.version) && source.version >= 1 ? source.version : 1;
+  const { version, history } = normalizeHistory(source, declaredVersion, createdAt);
   return {
     id: typeof source.id === 'string' && source.id ? source.id : `rule-restored-${fallbackIndex + 1}`,
     code: typeof source.code === 'string' ? source.code.trim() : '',
@@ -313,6 +378,8 @@ function normalizeRule(item, fallbackIndex) {
     note: typeof source.note === 'string' ? source.note : '',
     createdAt,
     updatedAt: typeof source.updatedAt === 'string' && source.updatedAt ? source.updatedAt : createdAt,
+    version,
+    history,
   };
 }
 
@@ -399,6 +466,8 @@ module.exports = {
   normalize,
   normalizeRule,
   normalizeFile,
+  RULE_FIELDS,
+  HISTORY_LIMIT,
   LEVELS,
   STATUSES,
   FILE_TYPES,
